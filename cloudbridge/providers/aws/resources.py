@@ -7,6 +7,8 @@ import logging
 
 from botocore.exceptions import ClientError
 
+import tenacity
+
 from cloudbridge.base.resources import BaseAttachmentInfo
 from cloudbridge.base.resources import BaseBucket
 from cloudbridge.base.resources import BaseBucketObject
@@ -88,12 +90,19 @@ class AWSMachineImage(BaseMachineImage):
         """
         return find_tag_value(self._ec2_image.tags, 'Name')
 
+    @tenacity.retry(stop=tenacity.stop_after_attempt(5),
+                    retry=tenacity.retry_if_exception_type(ClientError),
+                    wait=tenacity.wait_fixed(5),
+                    reraise=True)
+    def _set_label(self, value):
+        self._ec2_image.create_tags(Tags=[{'Key': 'Name',
+                                           'Value': value or ""}])
+
     @label.setter
     # pylint:disable=arguments-differ
     def label(self, value):
         self.assert_valid_resource_label(value)
-        self._ec2_image.create_tags(Tags=[{'Key': 'Name',
-                                           'Value': value or ""}])
+        self._set_label(value)
 
     @property
     def description(self):
